@@ -7,4 +7,5 @@
 //!
 //! Este archivo hace el cableado: elige qué adaptador implementa cada puerto.
 
+pub mod application;
 pub mod domain;
