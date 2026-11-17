@@ -4,7 +4,7 @@
 # en el mismo orden, y se detiene en el primero que falle.
 #
 #   1. format → cargo fmt --check
-#   2. lint   → cargo clippy (warnings como errores)
+#   2. lint   → cargo clippy (warnings como errores, ver .cargo/config.toml)
 #   3. test   → cargo test
 #   4. build  → cargo build --release
 # -----------------------------------------------------------------------------
@@ -22,7 +22,7 @@ step() {
 }
 
 step format fmt --check
-step lint clippy --locked --all-targets -- -D warnings
+step lint clippy --locked --all-targets
 step test test --locked
 step build build --locked --release
 

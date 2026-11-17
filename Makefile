@@ -139,7 +139,7 @@ test:
 	@$(CARGO) test --locked $(T)
 
 lint:
-	@$(CARGO) clippy --locked --all-targets -- -D warnings
+	@$(CARGO) clippy --locked --all-targets
 
 format:
 	@$(CARGO) fmt
