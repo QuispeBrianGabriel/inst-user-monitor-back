@@ -11,14 +11,18 @@
 //! - `RUST_LOG` (opcional, info): nivel de logs.
 //! - `JWT_SECRET` (obligatoria en `serve`, ≥ 32 caracteres): firma de tokens.
 //! - `JWT_TTL_MINUTES` (opcional, 15): duración del token de acceso.
+//! - `CORS_ORIGIN` (opcional, http://localhost:3000): origen(es) del frontend
+//!   permitidos, separados por comas y sin barra final.
 
 mod app;
 mod auth;
 
 use std::{env, error::Error, net::SocketAddr, time::Duration};
 
+use axum::http::{HeaderValue, Method, header};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::{net::TcpListener, signal};
+use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -60,13 +64,28 @@ async fn serve(pool: PgPool) -> Result<(), Box<dyn Error + Send + Sync>> {
     tracing::info!("API escuchando en {}", listener.local_addr()?);
 
     // Con la IP de cada conexión: la usa el rate limit de auth.
-    let app = app::router(pool, auth).into_make_service_with_connect_info::<SocketAddr>();
+    let app = app::router(pool, auth)
+        .layer(cors()?)
+        .into_make_service_with_connect_info::<SocketAddr>();
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
     tracing::info!("API detenida");
     Ok(())
+}
+
+/// CORS para que el frontend (otro dominio) pueda llamar a la API.
+fn cors() -> Result<CorsLayer, Box<dyn Error + Send + Sync>> {
+    let origins = env::var("CORS_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into());
+    let origins = origins
+        .split(',')
+        .map(|origin| origin.trim().parse::<HeaderValue>())
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(CorsLayer::new()
+        .allow_origin(origins)
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]))
 }
 
 /// Espera a Ctrl+C (desarrollo) o SIGTERM (`docker stop`) para cerrar en orden.
