@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions: {}
+
+jobs:
+  pipeline:
+    name: Wait for pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # Si el Pipeline de este commit ya terminó, `gh run watch` sale al instante.
+      # Si el tag se subió junto con el commit, su Pipeline puede tardar en aparecer.
+      - name: Wait for the pipeline of this commit and fail if it failed
+        run: |
+          for _ in $(seq 30); do
+            run_id=$(gh run list --workflow pipeline.yml --commit "$GITHUB_SHA" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            [ -n "$run_id" ] && break
+            sleep 10
+          done
+          if [ -z "$run_id" ]; then
+            echo "::error::No hay ningún Pipeline para $GITHUB_SHA: ¿el commit está en main?"
+            exit 1
+          fi
+          gh run watch "$run_id" --exit-status --interval 10
+
+  image:
+    name: Publish image
+    needs: pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # vX.Y.Z → X.Y.Z y, si es estable (sin -rc…), también latest
+      - id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: type=semver,pattern={{version}}
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/login-action@v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@v7.4.0
+        with:
+          file: docker/Dockerfile.prod
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    name: Create GitHub release
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Notas a partir de los conventional commits desde el tag anterior (cliff.toml)
+      - id: changelog
+        uses: orhun/git-cliff-action@v4.9.1
+        with:
+          args: --latest --strip header
+      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag --notes "$NOTES" --prerelease="$PRERELEASE"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ steps.changelog.outputs.content }}
+          PRERELEASE: ${{ contains(github.ref_name, '-') }}
