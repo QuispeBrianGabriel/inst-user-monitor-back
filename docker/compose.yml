@@ -11,6 +11,7 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
       JWT_SECRET: ${JWT_SECRET:?falta JWT_SECRET en docker/.env (ejecuta make setup)}
       JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-15}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
