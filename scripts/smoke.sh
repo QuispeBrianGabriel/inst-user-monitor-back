@@ -3,6 +3,7 @@
 # Prueba rápida de que la API responde como se espera:
 #   1. /health          → 200 (la API y la base responden)
 #   2. /no-existe       → 404 (las rutas desconocidas no rompen nada)
+#   3. /auth/me sin token → 401 (las rutas protegidas exigen token)
 #
 # Uso: scripts/smoke.sh [URL]
 #   Por defecto apunta a la API local. Para producción: scripts/smoke.sh https://...
@@ -32,6 +33,7 @@ expect() {
 info "Probando $URL"
 expect "health" 200 "$URL/health"
 expect "ruta desconocida" 404 "$URL/no-existe"
+expect "auth sin token" 401 "$URL/auth/me"
 
 if [[ $failures -gt 0 ]]; then
 	fail "$failures comprobación(es) fallaron"
