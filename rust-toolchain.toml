@@ -1,0 +1,5 @@
+# Versión de Rust: mantener igual en docker/Dockerfile.dev y docker/Dockerfile.prod
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
