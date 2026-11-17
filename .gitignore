@@ -1,0 +1,8 @@
+# Compilación de cargo
+/target
+
+# Variables locales con secretos (plantilla: docker/.env.example)
+docker/.env
+
+# Copias de la base (make db-dump)
+/dumps
