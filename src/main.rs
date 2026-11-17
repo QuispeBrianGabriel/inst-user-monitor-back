@@ -11,6 +11,7 @@
 //! - `RUST_LOG` (opcional, info): nivel de logs.
 
 mod app;
+mod auth;
 
 use std::{env, error::Error, time::Duration};
 

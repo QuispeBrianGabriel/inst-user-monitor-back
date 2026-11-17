@@ -1,0 +1,8 @@
+//! Dominio de autenticación: entidades, value objects y puertos.
+//! No depende de HTTP, de la base de datos ni de librerías de criptografía.
+
+mod email;
+mod password;
+
+pub use email::{Email, EmailError};
+pub use password::{Password, PasswordError, PasswordHash};
