@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1
+
+# ----- dev: entorno de desarrollo -----
+# Versión de Rust: mantener igual en rust-toolchain.toml y Dockerfile.prod
+FROM rust:1.100.0-trixie
+
+# Cliente de PostgreSQL 18 (misma versión que `db` del compose) desde el repo
+# oficial: pg_dump se niega a copiar un servidor más nuevo que él.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git curl make tree postgresql-common \
+    && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
+    && apt-get install -y --no-install-recommends postgresql-client-18 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Componentes de calidad y herramientas de cargo:
+#   sqlx-cli    → migraciones (make migration, make db-migrations)
+#   cargo-watch → recarga en caliente (make dev)
+RUN rustup component add rustfmt clippy \
+    && cargo install --locked sqlx-cli --no-default-features --features postgres,rustls \
+    && cargo install --locked cargo-watch \
+    && rm -rf "$CARGO_HOME/registry"
+
+# Usuario no-root con el uid habitual del host, dueño de la toolchain para que
+# cargo pueda escribir su caché (volumen cargo-registry del compose).
+RUN useradd --create-home --uid 1000 --shell /bin/bash dev \
+    && mkdir -p "$CARGO_HOME/registry" /home/dev/.claude \
+    && chown -R dev:dev "$CARGO_HOME" "$RUSTUP_HOME" /home/dev
+USER dev
+WORKDIR /app
+CMD ["sleep", "infinity"]
