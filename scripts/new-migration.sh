@@ -6,7 +6,7 @@
 #   Ej:  scripts/new-migration.sh crear_usuarios
 #   →    migrations/0002_crear_usuarios.sql
 #
-# La API las aplica al arrancar (sqlx::migrate!). Una migración publicada
+# Se aplican con `make migrate` (en producción: /server migrate). Una migración publicada
 # nunca se edita ni se borra: SQLx guarda su checksum y fallaría al arrancar.
 # -----------------------------------------------------------------------------
 source "$(dirname "$0")/_common.sh"
@@ -24,3 +24,4 @@ fi
 if ! sqlx migrate add --sequential "$NAME"; then
 	fail "sqlx no pudo crear la migración (revisa el error de arriba)"
 fi
+ok "Edítala y aplícala con make migrate"

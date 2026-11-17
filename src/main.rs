@@ -1,5 +1,10 @@
 //! API de Inst User Monitor.
 //!
+//! Comandos (primer argumento):
+//! - `serve` (por defecto): atiende peticiones HTTP.
+//! - `migrate`: aplica las migraciones pendientes y termina. Es un proceso
+//!   puntual: se lanza una vez por release, no en cada arranque de `serve`.
+//!
 //! Variables de entorno:
 //! - `DATABASE_URL` (obligatoria): conexión a PostgreSQL.
 //! - `PORT` (opcional, 8080): puerto HTTP.
@@ -9,7 +14,7 @@ mod app;
 
 use std::{env, error::Error, time::Duration};
 
-use sqlx::postgres::PgPoolOptions;
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::{net::TcpListener, signal};
 use tracing_subscriber::EnvFilter;
 
@@ -19,16 +24,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
 
+    let command = env::args().nth(1).unwrap_or_else(|| "serve".into());
+    if !matches!(command.as_str(), "serve" | "migrate") {
+        return Err(format!("comando desconocido '{command}': usa serve o migrate").into());
+    }
     let database_url = env::var("DATABASE_URL").map_err(|_| "falta la variable DATABASE_URL")?;
-    let port: u16 = env::var("PORT").unwrap_or_else(|_| "8080".into()).parse()?;
 
     let pool = PgPoolOptions::new()
         .acquire_timeout(Duration::from_secs(5))
         .connect(&database_url)
         .await?;
 
-    // Aplica las migraciones de migrations/, incrustadas en el binario al compilar.
+    if command == "migrate" {
+        migrate(pool).await
+    } else {
+        serve(pool).await
+    }
+}
+
+/// Aplica las migraciones de migrations/, incrustadas en el binario al compilar.
+async fn migrate(pool: PgPool) -> Result<(), Box<dyn Error>> {
     sqlx::migrate!().run(&pool).await?;
+    tracing::info!("migraciones aplicadas");
+    Ok(())
+}
+
+async fn serve(pool: PgPool) -> Result<(), Box<dyn Error>> {
+    let port: u16 = env::var("PORT").unwrap_or_else(|_| "8080".into()).parse()?;
 
     let listener = TcpListener::bind(("0.0.0.0", port)).await?;
     tracing::info!("API escuchando en {}", listener.local_addr()?);

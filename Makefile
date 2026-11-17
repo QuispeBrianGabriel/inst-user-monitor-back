@@ -36,7 +36,7 @@ PSQL := psql "$(DATABASE_URL)"
         run dev stop health smoke \
         check test lint format format-check \
         build clean \
-        psql db-tables db-migrations migration db-dump db-restore db-reset \
+        psql db-tables db-migrations migrate migration db-dump db-restore db-reset \
         version release
 
 # =============================================================================
@@ -84,6 +84,7 @@ help:
 	@printf $(ITEM) "psql"          "💻 Consola SQL"
 	@printf $(ITEM) "db-tables"     "📋 Lista las tablas"
 	@printf $(ITEM) "db-migrations" "🗂️  Estado de las migraciones"
+	@printf $(ITEM) "migrate"       "⏫ Aplica las migraciones pendientes"
 	@printf $(ARGS) "migration"     "✍️  Crea la siguiente migración" "NAME="
 	@printf $(ARGS) "db-dump"       "💾 Copia de seguridad en dumps/" "[DB=url]"
 	@printf $(ARGS) "db-restore"    "⏪ Restaura una copia (pide confirmar)" "FILE= [DB=url]"
@@ -169,6 +170,10 @@ db-tables:
 
 db-migrations:
 	@$(GRACEFUL) "🛑 Consulta cancelada" sqlx migrate info
+
+# El mismo binario y comando que en producción: /server migrate
+migrate:
+	@$(GRACEFUL) "🛑 Migración interrumpida" cargo run --quiet -- migrate
 
 migration:
 	@scripts/new-migration.sh "$(NAME)"
