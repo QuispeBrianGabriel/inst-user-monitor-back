@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+
+# ----- build: compilación del binario -----
+# Versión de Rust: mantener igual en rust-toolchain.toml y Dockerfile.dev.
+# No se copia rust-toolchain.toml: la imagen ya trae esa versión, y así rustup
+# no descarga componentes (rustfmt, clippy) que aquí no hacen falta.
+FROM rust:1.100.0-slim-trixie AS build
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY src src
+COPY migrations migrations
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    cargo build --release --locked \
+    && cp target/release/inst-user-monitor-back /server
+
+# ----- prod: imagen final mínima (solo glibc, sin shell, no-root) -----
+FROM gcr.io/distroless/cc-debian13:nonroot AS prod
+COPY --from=build /server /server
+ENV PORT=8080
+EXPOSE 8080
+ENTRYPOINT ["/server"]

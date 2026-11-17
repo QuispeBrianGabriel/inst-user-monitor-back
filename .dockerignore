@@ -1,0 +1,4 @@
+target
+dumps
+.git
+docker/.env
