@@ -6,3 +6,6 @@ docker/.env
 
 # Copias de la base (make db-dump)
 /dumps
+
+# Ajustes locales de Loco que se mezclan sobre config/<entorno>.yaml
+/config/*.local.yaml

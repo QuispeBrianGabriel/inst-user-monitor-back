@@ -7,21 +7,33 @@
 FROM rust:1.100.0-slim-trixie AS build
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
-# Capa de dependencias: solo se recompila si cambian Cargo.toml o Cargo.lock.
+COPY migration/Cargo.toml migration/
+# Capa de dependencias: solo se recompila si cambian los Cargo.toml o Cargo.lock.
 # Con el cache del registry (release.yml) esta capa se reutiliza entre releases.
-RUN mkdir src && echo 'fn main() {}' > src/main.rs \
+# Fuentes ficticias con la misma forma que las reales (bin + lib + migration).
+RUN mkdir -p src/bin migration/src \
+    && echo 'fn main() {}' > src/bin/main.rs \
+    && touch src/lib.rs migration/src/lib.rs \
     && cargo build --release --locked \
-    && rm -rf src
+    && rm -rf src migration/src
 COPY src src
-COPY migrations migrations
+COPY migration/src migration/src
 # touch: cargo compara mtimes y el build ficticio podría parecer más reciente
-RUN touch src/main.rs \
+RUN touch src/bin/main.rs src/lib.rs migration/src/lib.rs \
     && cargo build --release --locked \
-    && cp target/release/inst-user-monitor-back /server
+    && cp target/release/inst_user_monitor_back-cli /server
 
 # ----- prod: imagen final mínima (solo glibc, sin shell, no-root) -----
 FROM gcr.io/distroless/cc-debian13:nonroot AS prod
 COPY --from=build /server /server
-ENV PORT=8080
+# Loco lee config/<LOCO_ENV>.yaml; los secretos llegan por variables de entorno
+# (ver config/production.yaml).
+COPY config/production.yaml /config/production.yaml
+ENV LOCO_ENV=production \
+    LOCO_CONFIG_FOLDER=/config \
+    PORT=8080
 EXPOSE 8080
+# `docker run <imagen>` atiende peticiones. Una vez por release, antes de
+# desplegar: `docker run <imagen> db migrate`.
 ENTRYPOINT ["/server"]
+CMD ["start"]

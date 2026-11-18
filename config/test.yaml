@@ -1,0 +1,52 @@
+# Configuración de los tests (`cargo test`, `make test`).
+#
+# Cada test de integración arranca la app contra la base de TEST_DATABASE_URL
+# con el esquema recién recreado (dangerously_recreate), así que empiezan
+# vacíos e independientes; por eso se ejecutan en serie (`#[serial]`).
+# `make test` crea la base si no existe.
+#
+# ⚠ TEST_DATABASE_URL y nunca DATABASE_URL: apuntar aquí la base de
+# desarrollo borraría sus datos.
+
+logger:
+  enable: false
+  pretty_backtrace: true
+  level: debug
+  format: compact
+
+server:
+  port: 8080
+  host: http://localhost
+  middlewares:
+    limit_payload:
+      body_limit: 16kb
+    timeout_request:
+      enable: true
+      timeout: 10000
+    cors:
+      enable: true
+      allow_origins: ["http://localhost:3000"]
+      allow_methods: ["GET", "POST"]
+      allow_headers: ["content-type", "authorization"]
+    etag:
+      enable: false
+
+workers:
+  mode: ForegroundBlocking
+
+database:
+  uri: <%= get_env(name="TEST_DATABASE_URL", default="postgres://postgres:postgres@localhost:5432/inst_user_monitor_test") %>
+  enable_logging: false
+  connect_timeout: 5000
+  idle_timeout: 500
+  min_connections: 1
+  max_connections: 5
+  auto_migrate: true
+  dangerously_truncate: true
+  dangerously_recreate: true
+
+auth:
+  jwt:
+    # Solo para tests (base64 de 64 bytes).
+    secret: aW5zdC11c2VyLW1vbml0b3I6IHNlY3JldG8gU09MTyBwYXJhIHRlc3RzLCBudW5jYSBlbiBwcm9kdWNjaW9uIQ==
+    expiration: 900

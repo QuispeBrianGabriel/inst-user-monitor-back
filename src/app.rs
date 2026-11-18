@@ -1,87 +1,73 @@
-//! Rutas HTTP de la API.
+use std::path::Path;
 
-use std::time::Duration;
-
-use axum::{
-    Json, Router,
-    extract::{DefaultBodyLimit, State},
-    http::StatusCode,
-    routing::get,
+use async_trait::async_trait;
+use loco_rs::{
+    Result,
+    app::{AppContext, Hooks, Initializer},
+    bgworker::Queue,
+    boot::{BootResult, StartMode, create_app},
+    config::Config,
+    controller::AppRoutes,
+    db::truncate_table,
+    environment::Environment,
+    task::Tasks,
 };
-use serde_json::{Value, json};
-use sqlx::PgPool;
-use tower_http::{timeout::TimeoutLayer, trace::TraceLayer};
+use migration::Migrator;
 
-use crate::auth::{self, AuthState};
+#[allow(unused_imports)]
+use crate::{controllers, initializers, models::_entities::users, tasks};
 
-/// Tamaño máximo del cuerpo de una petición. La API solo recibe JSON pequeño.
-const BODY_LIMIT: usize = 16 * 1024;
-/// Tiempo máximo por petición antes de responder 408.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+pub struct App;
 
-/// Construye el router con todas las rutas y las capas comunes.
-pub fn router(pool: PgPool, auth: AuthState) -> Router {
-    Router::new()
-        .route("/health", get(health))
-        .with_state(pool)
-        .merge(auth::router(auth))
-        .layer(DefaultBodyLimit::max(BODY_LIMIT))
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            REQUEST_TIMEOUT,
-        ))
-        .layer(TraceLayer::new_for_http())
-}
-
-/// 200 si la API y la base responden, 503 si la base no responde.
-async fn health(State(pool): State<PgPool>) -> (StatusCode, Json<Value>) {
-    match sqlx::query("SELECT 1").execute(&pool).await {
-        Ok(_) => (StatusCode::OK, Json(json!({ "status": "up" }))),
-        Err(error) => {
-            tracing::warn!(%error, "la base de datos no responde");
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({ "status": "down" })),
-            )
-        }
+#[async_trait]
+impl Hooks for App {
+    fn app_name() -> &'static str {
+        env!("CARGO_CRATE_NAME")
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use axum::{body::Body, http::Request};
-    use sqlx::postgres::PgPoolOptions;
-    use tower::ServiceExt;
-
-    use super::*;
-
-    /// Router con una base que no existe: los tests no necesitan PostgreSQL.
-    fn app_without_db() -> Router {
-        let pool = PgPoolOptions::new()
-            .acquire_timeout(Duration::from_millis(500))
-            .connect_lazy("postgres://user:pass@127.0.0.1:1/none")
-            .unwrap();
-        let config = auth::AuthConfig::new(
-            "test-secret-with-at-least-32-bytes!!",
-            Duration::from_secs(900),
+    fn app_version() -> String {
+        format!(
+            "{} ({})",
+            env!("CARGO_PKG_VERSION"),
+            option_env!("BUILD_SHA")
+                .or(option_env!("GITHUB_SHA"))
+                .unwrap_or("dev")
         )
-        .unwrap();
-        let auth = auth::state(pool.clone(), &config).unwrap();
-        router(pool, auth)
     }
 
-    async fn get_status(uri: &str) -> StatusCode {
-        let request = Request::get(uri).body(Body::empty()).unwrap();
-        app_without_db().oneshot(request).await.unwrap().status()
+    async fn boot(
+        mode: StartMode,
+        environment: &Environment,
+        config: Config,
+    ) -> Result<BootResult> {
+        create_app::<Self, Migrator>(mode, environment, config).await
     }
 
-    #[tokio::test]
-    async fn health_is_unavailable_without_db() {
-        assert_eq!(get_status("/health").await, StatusCode::SERVICE_UNAVAILABLE);
+    async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
+        Ok(vec![Box::new(initializers::jwt_config::JwtConfig)])
     }
 
-    #[tokio::test]
-    async fn unknown_route_is_not_found() {
-        assert_eq!(get_status("/no-existe").await, StatusCode::NOT_FOUND);
+    // Además de las rutas de abajo, las de monitorización de Loco:
+    // `/_ping`, `/_health` y `/_readiness` (comprueba la base; 503 si no responde).
+    fn routes(_ctx: &AppContext) -> AppRoutes {
+        AppRoutes::with_default_routes().add_route(controllers::auth::routes())
+    }
+
+    async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn register_tasks(tasks: &mut Tasks) {
+        // tasks-inject (do not remove)
+    }
+
+    async fn truncate(ctx: &AppContext) -> Result<()> {
+        truncate_table(&ctx.db, users::Entity).await?;
+        Ok(())
+    }
+
+    async fn seed(_ctx: &AppContext, _base: &Path) -> Result<()> {
+        Ok(())
     }
 }

@@ -127,6 +127,32 @@ use_local_db() {
 	DB="$DATABASE_URL"
 }
 
+# =============================================================================
+#  Base de TEST (`config/test.yaml`), en el mismo servidor que la local.
+#
+#  Los tests de integración recrean su esquema en cada test, así que nunca es
+#  la base de desarrollo: usa TEST_DATABASE_URL. Si la base no existe, la crea.
+# =============================================================================
+ensure_test_db() {
+	if [[ -z "${TEST_DATABASE_URL:-}" ]]; then
+		fail "TEST_DATABASE_URL no está definida: ¿estás dentro del Dev Container?"
+	fi
+	local name="${TEST_DATABASE_URL##*/}"
+	name="${name%%\?*}"
+	local admin="${TEST_DATABASE_URL%/*}/postgres"
+
+	local exists
+	if ! exists=$(psql --dbname="$admin" -tAc "SELECT 1 FROM pg_database WHERE datname = '$name'"); then
+		fail "No se pudo conectar a $(redact "$admin") (revisa el error de arriba)"
+	fi
+	if [[ -z "$exists" ]]; then
+		if ! psql --quiet --dbname="$admin" -c "CREATE DATABASE \"$name\""; then
+			fail "No se pudo crear la base de test $name (revisa el error de arriba)"
+		fi
+		ok "Base de test $name creada"
+	fi
+}
+
 # Muestra una URL de conexión sin usuario ni contraseña, para poder imprimirla.
 # postgres://user:clave@host/db → postgres://host/db
 redact() {

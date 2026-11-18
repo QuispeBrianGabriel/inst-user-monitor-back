@@ -13,10 +13,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Componentes de calidad y herramientas de cargo:
-#   sqlx-cli    → migraciones (make migration, make db-migrations)
+#   sea-orm-cli → la usa `cargo loco db entities` (make entities) para generar
+#                 src/models/_entities/ desde la base
 #   cargo-watch → recarga en caliente (make dev)
 RUN rustup component add rustfmt clippy \
-    && cargo install --locked sqlx-cli --no-default-features --features postgres,rustls \
+    && cargo install --locked sea-orm-cli@2.0.4 --no-default-features \
+        --features cli,codegen,runtime-tokio-rustls,sqlx-postgres \
     && cargo install --locked cargo-watch \
     && rm -rf "$CARGO_HOME/registry"
 
