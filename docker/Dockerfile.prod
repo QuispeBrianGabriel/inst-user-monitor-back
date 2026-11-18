@@ -7,11 +7,16 @@
 FROM rust:1.100.0-slim-trixie AS build
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
+# Capa de dependencias: solo se recompila si cambian Cargo.toml o Cargo.lock.
+# Con el cache del registry (release.yml) esta capa se reutiliza entre releases.
+RUN mkdir src && echo 'fn main() {}' > src/main.rs \
+    && cargo build --release --locked \
+    && rm -rf src
 COPY src src
 COPY migrations migrations
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/target \
-    cargo build --release --locked \
+# touch: cargo compara mtimes y el build ficticio podría parecer más reciente
+RUN touch src/main.rs \
+    && cargo build --release --locked \
     && cp target/release/inst-user-monitor-back /server
 
 # ----- prod: imagen final mínima (solo glibc, sin shell, no-root) -----
