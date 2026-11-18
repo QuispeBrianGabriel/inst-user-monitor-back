@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# Crea la siguiente migración de SQLx vacía, con el número correlativo.
+# Crea la siguiente migración con el generador de Loco: escribe el archivo
+# migration/src/mAAAAMMDD_HHMMSS_<nombre>.rs y lo registra en migration/src/lib.rs.
 #
 # Uso: scripts/new-migration.sh <nombre>
-#   Ej:  scripts/new-migration.sh crear_usuarios
-#   →    migrations/0002_crear_usuarios.sql
+#   Ej:  scripts/new-migration.sh add_name_to_users
 #
-# Se aplican con `make migrate` (en producción: /server migrate). Una migración publicada
-# nunca se edita ni se borra: SQLx guarda su checksum y fallaría al arrancar.
+# Después: edítala, aplícala (make migrate) y regenera las entidades
+# (make entities). Una migración publicada nunca se edita ni se borra:
+# crea otra que corrija la anterior.
 # -----------------------------------------------------------------------------
 source "$(dirname "$0")/_common.sh"
 
 NAME="${1:-}"
 
 if [[ -z "$NAME" ]]; then
-	fail "Falta el nombre. Ej: make migration NAME=crear_usuarios"
+	fail "Falta el nombre. Ej: make migration NAME=add_name_to_users"
 fi
 if [[ ! "$NAME" =~ ^[a-z0-9_]+$ ]]; then
 	fail "El nombre solo admite minúsculas, números y _"
 fi
 
-# --sequential: numera 0001, 0002… en lugar de usar la fecha.
-if ! sqlx migrate add --sequential "$NAME"; then
-	fail "sqlx no pudo crear la migración (revisa el error de arriba)"
+if ! cargo loco generate migration "$NAME"; then
+	fail "Loco no pudo crear la migración (revisa el error de arriba)"
 fi
-ok "Edítala y aplícala con make migrate"
+ok "Edítala, aplícala con make migrate y regenera las entidades con make entities"

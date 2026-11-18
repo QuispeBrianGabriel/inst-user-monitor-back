@@ -1,0 +1,68 @@
+# Configuración de desarrollo (`cargo loco start`, `make run`).
+#
+# Toda la configuración vive aquí, en YAML tipado: el código no lee variables
+# de entorno. Los valores que cambian por entorno o son secretos entran por
+# `get_env`, con las mismas variables que define docker/compose.yml.
+#
+# Ajustes personales sin tocar este archivo: config/development.local.yaml
+# (ignorado por git), que se mezcla por encima.
+
+logger:
+  enable: true
+  pretty_backtrace: true
+  # trace, debug, info, warn o error
+  level: <%= get_env(name="LOG_LEVEL", default="info") %>
+  # compact, pretty o json
+  format: compact
+
+server:
+  port: <%= get_env(name="PORT", default="8080") %>
+  # 0.0.0.0 y no localhost: la API corre dentro del Dev Container y el puerto
+  # se publica en el host (solo en 127.0.0.1, ver docker/compose.yml).
+  binding: <%= get_env(name="BINDING", default="0.0.0.0") %>
+  host: http://localhost
+  # Middlewares de Loco. Ojo: escribir la clave de uno cambia su valor por
+  # defecto a `enable: false`, así que cada bloque declara `enable` explícito.
+  middlewares:
+    # La API solo recibe JSON pequeño.
+    limit_payload:
+      body_limit: 16kb
+    # Más de 10 s sin respuesta → 408.
+    timeout_request:
+      enable: true
+      timeout: 10000
+    # El frontend vive en otro origen. CORS_ORIGIN: uno o varios orígenes
+    # separados por comas, sin barra final.
+    cors:
+      enable: true
+      allow_origins: [<% for origin in get_env(name="CORS_ORIGIN", default="http://localhost:3000") | split(pat=",") %>"<%= origin | trim %>"<% if not loop.last %>, <% endif %><% endfor %>]
+      allow_methods: ["GET", "POST"]
+      allow_headers: ["content-type", "authorization"]
+    # Las respuestas de la API no se cachean por ETag.
+    etag:
+      enable: false
+
+workers:
+  # La API no tiene trabajos en segundo plano: el modo en proceso basta.
+  mode: BackgroundAsync
+
+database:
+  uri: <%= get_env(name="DATABASE_URL") %>
+  enable_logging: <%= get_env(name="DB_LOGGING", default="false") %>
+  # Milisegundos esperando una conexión libre del pool.
+  connect_timeout: <%= get_env(name="DB_CONNECT_TIMEOUT", default="5000") %>
+  idle_timeout: <%= get_env(name="DB_IDLE_TIMEOUT", default="500") %>
+  min_connections: <%= get_env(name="DB_MIN_CONNECTIONS", default="1") %>
+  max_connections: <%= get_env(name="DB_MAX_CONNECTIONS", default="5") %>
+  # En local, `make run` aplica las migraciones pendientes al arrancar.
+  auto_migrate: true
+  dangerously_truncate: false
+  dangerously_recreate: false
+
+auth:
+  jwt:
+    # Base64 de al menos 32 bytes (lo valida el arranque). make setup genera
+    # una aleatoria en docker/.env. Si cambia, los tokens emitidos dejan de valer.
+    secret: <%= get_env(name="JWT_SECRET") %>
+    # Duración del token de acceso, en segundos.
+    expiration: <%= get_env(name="JWT_TTL_MINUTES", default="15") | int * 60 %>

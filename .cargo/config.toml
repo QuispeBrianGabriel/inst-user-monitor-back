@@ -5,3 +5,9 @@
 # sin usar) hace fallar el comando: build, run, test y clippy por igual.
 # Es la única fuente de esta regla: no hace falta `-D warnings` en ningún sitio.
 warnings = "deny"
+
+[alias]
+# CLI del framework: `cargo loco start`, `cargo loco db migrate`,
+# `cargo loco generate …`, `cargo loco routes`, `cargo loco doctor`…
+loco = "run --"
+playground = "run --example playground"

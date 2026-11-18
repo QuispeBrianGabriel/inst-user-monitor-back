@@ -32,11 +32,11 @@ URL  ?= http://localhost:8080
 # Consola SQL contra la base local, con la misma variable que usa la API
 PSQL := psql "$(DATABASE_URL)"
 
-.PHONY: setup help tree secret \
-        run dev stop health smoke \
+.PHONY: setup help tree secret jwt-secret \
+        run dev stop routes doctor health smoke \
         check test lint format format-check \
         build clean \
-        psql db-tables db-migrations migrate migration db-dump db-restore db-reset \
+        psql db-tables db-migrations migrate migration entities db-dump db-restore db-reset \
         version release
 
 # =============================================================================
@@ -61,13 +61,16 @@ help:
 	@printf $(ITEM) "help"          "📖 Muestra esta ayuda"
 	@printf $(ITEM) "tree"          "🌳 Árbol del código del proyecto"
 	@printf $(ITEM) "secret"        "🔑 Genera una contraseña aleatoria"
+	@printf $(ITEM) "jwt-secret"    "🔐 Genera un JWT_SECRET (base64, 64 bytes)"
 
 	@printf "$(TITLE)" "🚀 Aplicación"
 	@printf $(ITEM) "run"           "▶️  Arranca la API en :8080"
 	@printf $(ITEM) "dev"           "🔁 Arranca la API y la reinicia al guardar"
 	@printf $(ITEM) "stop"          "⏹️  Detiene la API y libera el 8080"
-	@printf $(ARGS) "health"        "💓 Consulta /health" "[URL=]"
-	@printf $(ARGS) "smoke"         "🔥 Comprueba health y 404" "[URL=]"
+	@printf $(ITEM) "routes"        "🗺️  Lista las rutas registradas"
+	@printf $(ITEM) "doctor"        "🩺 Revisa config, base y JWT (cargo loco doctor)"
+	@printf $(ARGS) "health"        "💓 Consulta /_readiness" "[URL=]"
+	@printf $(ARGS) "smoke"         "🔥 Comprueba readiness, 404 y auth" "[URL=]"
 
 	@printf "$(TITLE)" "🧪 Calidad"
 	@printf $(ITEM) "check"         "✅ Lo mismo que el pipeline (format, lint, test, build)"
@@ -86,6 +89,7 @@ help:
 	@printf $(ITEM) "db-migrations" "🗂️  Estado de las migraciones"
 	@printf $(ITEM) "migrate"       "⏫ Aplica las migraciones pendientes"
 	@printf $(ARGS) "migration"     "✍️  Crea la siguiente migración" "NAME="
+	@printf $(ITEM) "entities"      "🧬 Regenera src/models/_entities/ desde la base"
 	@printf $(ARGS) "db-dump"       "💾 Copia de seguridad en dumps/" "[DB=url]"
 	@printf $(ARGS) "db-restore"    "⏪ Restaura una copia (pide confirmar)" "FILE= [DB=url]"
 	@printf $(ITEM) "db-reset"      "💣 Vacía la base (pide confirmar)"
@@ -108,21 +112,31 @@ tree:
 secret:
 	@$(GRACEFUL) "🛑 Cancelado" openssl rand -hex 24
 
+# Loco firma con HS512: el secreto es base64 de al menos 64 bytes
+jwt-secret:
+	@$(GRACEFUL) "🛑 Cancelado" bash -c "openssl rand -base64 64 | tr -d '\\n'; echo"
+
 # =============================================================================
 #  🚀 Aplicación
 # =============================================================================
 
 run:
-	@$(GRACEFUL) "⏹️  API detenida correctamente" cargo run
+	@$(GRACEFUL) "⏹️  API detenida correctamente" cargo loco start
 
 dev:
-	@$(GRACEFUL) "⏹️  API detenida correctamente" cargo watch -x run
+	@$(GRACEFUL) "⏹️  API detenida correctamente" cargo watch -x "loco start"
 
 stop:
 	@scripts/stop.sh
 
+routes:
+	@$(GRACEFUL) "🛑 Cancelado" cargo loco routes
+
+doctor:
+	@$(GRACEFUL) "🛑 Cancelado" cargo loco doctor
+
 health:
-	@$(GRACEFUL) "🛑 Consulta cancelada" curl -sS -w '\n' $(URL)/health
+	@$(GRACEFUL) "🛑 Consulta cancelada" curl -sS -w '\n' $(URL)/_readiness
 
 smoke:
 	@scripts/smoke.sh "$(URL)"
@@ -134,9 +148,9 @@ smoke:
 check:
 	@scripts/check.sh
 
-# Con T se filtran los tests por nombre: make test T=health
+# Con T se filtran los tests por nombre: make test T=login
 test:
-	@$(CARGO) test --locked $(T)
+	@scripts/test.sh $(T)
 
 lint:
 	@$(CARGO) clippy --locked --all-targets
@@ -169,14 +183,17 @@ db-tables:
 	@$(GRACEFUL) "🛑 Consulta cancelada" $(PSQL) -c '\dt'
 
 db-migrations:
-	@$(GRACEFUL) "🛑 Consulta cancelada" sqlx migrate info
+	@$(GRACEFUL) "🛑 Consulta cancelada" cargo loco db status
 
-# El mismo binario y comando que en producción: /server migrate
+# El mismo binario y comando que en producción: /server db migrate
 migrate:
-	@$(GRACEFUL) "🛑 Migración interrumpida" cargo run --quiet -- migrate
+	@$(GRACEFUL) "🛑 Migración interrumpida" cargo loco db migrate
 
 migration:
 	@scripts/new-migration.sh "$(NAME)"
+
+entities:
+	@$(GRACEFUL) "🛑 Cancelado" cargo loco db entities
 
 # Con DB se apunta a otra base (ej. producción): make db-dump DB='postgres://…'
 db-dump:

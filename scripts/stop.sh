@@ -5,7 +5,7 @@
 # -----------------------------------------------------------------------------
 source "$(dirname "$0")/_common.sh"
 
-BIN=target/debug/inst-user-monitor-back
+BIN=target/debug/inst_user_monitor_back-cli
 
 # cargo-watch relanza la API al detenerla: se para también el vigilante.
 # pkill busca por la línea de comandos completa del proceso.

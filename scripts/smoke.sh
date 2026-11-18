@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
 # Prueba rápida de que la API responde como se espera:
-#   1. /health          → 200 (la API y la base responden)
+#   1. /_readiness      → 200 (la API y la base responden)
 #   2. /no-existe       → 404 (las rutas desconocidas no rompen nada)
 #   3. /auth/me sin token → 401 (las rutas protegidas exigen token)
 #
@@ -31,7 +31,7 @@ expect() {
 }
 
 info "Probando $URL"
-expect "health" 200 "$URL/health"
+expect "readiness" 200 "$URL/_readiness"
 expect "ruta desconocida" 404 "$URL/no-existe"
 expect "auth sin token" 401 "$URL/auth/me"
 

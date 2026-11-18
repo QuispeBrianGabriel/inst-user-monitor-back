@@ -5,7 +5,7 @@
 #
 #   1. format → cargo fmt --check
 #   2. lint   → cargo clippy (warnings como errores, ver .cargo/config.toml)
-#   3. test   → cargo test
+#   3. test   → cargo test (crea antes la base de test si no existe)
 #   4. build  → cargo build --release
 # -----------------------------------------------------------------------------
 source "$(dirname "$0")/_common.sh"
@@ -23,6 +23,7 @@ step() {
 
 step format fmt --check
 step lint clippy --locked --all-targets
+ensure_test_db
 step test test --locked
 step build build --locked --release
 
