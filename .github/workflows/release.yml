@@ -8,29 +8,10 @@ permissions: {}
 
 jobs:
   pipeline:
-    name: Wait for pipeline
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    name: Pipeline
+    uses: ./.github/workflows/pipeline.yml
     permissions:
-      actions: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-    steps:
-      # Si el Pipeline de este commit ya terminó, `gh run watch` sale al instante.
-      # Si el tag se subió junto con el commit, su Pipeline puede tardar en aparecer.
-      - name: Wait for the pipeline of this commit and fail if it failed
-        run: |
-          for _ in $(seq 30); do
-            run_id=$(gh run list --workflow pipeline.yml --commit "$GITHUB_SHA" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
-            [ -n "$run_id" ] && break
-            sleep 10
-          done
-          if [ -z "$run_id" ]; then
-            echo "::error::No hay ningún Pipeline para $GITHUB_SHA: ¿el commit está en main?"
-            exit 1
-          fi
-          gh run watch "$run_id" --exit-status --interval 10
+      contents: read
 
   image:
     name: Publish image
@@ -41,7 +22,6 @@ jobs:
       contents: read
       packages: write
     steps:
-      # vX.Y.Z → X.Y.Z y, si es estable (sin -rc…), también latest
       - id: meta
         uses: docker/metadata-action@v6.2.0
         with:
@@ -72,7 +52,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # Notas a partir de los conventional commits desde el tag anterior (cliff.toml)
       - id: changelog
         uses: orhun/git-cliff-action@v4.9.1
         with:
