@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
 # Publica una versión: crea el tag vX.Y.Z y lo sube junto con `main`.
-# El tag dispara el workflow Release: espera al Pipeline, publica la imagen
+# El tag dispara el workflow Release: corre el Pipeline, publica la imagen
 # en ghcr.io y crea el release de GitHub con los commits.
 #
 # Uso: scripts/release.sh <X.Y.Z>
