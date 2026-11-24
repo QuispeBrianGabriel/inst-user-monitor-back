@@ -1,0 +1,74 @@
+# -----------------------------------------------------------------------------
+# Stack completo en local, como en Railway: Postgres 18 + API + front, cada
+# uno con su imagen de producción (docker/Dockerfile.prod de cada repo) y las
+# mismas variables de entorno que sus servicios en Railway.
+#
+# Sirve para probar los dos juntos antes de publicar: lo que falla aquí
+# (migraciones, CORS, config.js, contrato de errores) falla en producción.
+#
+# No se usa directamente: `make stack` (scripts/stack.sh) resuelve la ruta
+# del front, construye, arranca, espera a la API y pasa el smoke test.
+#
+#   Front → http://localhost:${STACK_WEB_PORT:-3001}
+#   API   → http://localhost:${STACK_API_PORT:-8088}
+#
+# Puertos distintos de los del Dev Container (3000 y 8080): ambos pueden
+# convivir. La base no se publica: como en Railway, solo la ve la API.
+# Los secretos salen de docker/.env (make setup), igual que en compose.yml.
+# -----------------------------------------------------------------------------
+name: inst_user_monitor_stack
+
+services:
+  # Servicio "Postgres" de Railway
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?falta POSTGRES_DB en docker/.env (ejecuta make setup)}
+      POSTGRES_USER: ${POSTGRES_USER:?falta POSTGRES_USER en docker/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD en docker/.env}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Servicio "Back" de Railway
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.prod
+    environment:
+      # = ${{Postgres.POSTGRES_URL}}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET:?falta JWT_SECRET en docker/.env (ejecuta make setup)}
+      JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-15}
+      RUST_LOG: ${RUST_LOG:-info}
+      # = https://${{Front.RAILWAY_PUBLIC_DOMAIN}}
+      CORS_ORIGIN: http://localhost:${STACK_WEB_PORT:-3001}
+      # Railway lo inyecta
+      PORT: 8080
+    ports:
+      - "127.0.0.1:${STACK_API_PORT:-8088}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Servicio "Front" de Railway
+  web:
+    build:
+      context: ${FRONT_DIR:?falta FRONT_DIR (usa make stack)}
+      dockerfile: docker/dockerfile.prod
+    environment:
+      # = https://${{Back.RAILWAY_PUBLIC_DOMAIN}}. La usa el navegador, no el
+      # contenedor: por eso es localhost y no http://api:8080.
+      API_URL: http://localhost:${STACK_API_PORT:-8088}
+      PORT: 8080
+    ports:
+      - "127.0.0.1:${STACK_WEB_PORT:-3001}:8080"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
