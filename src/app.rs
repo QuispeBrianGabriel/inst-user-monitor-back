@@ -15,7 +15,11 @@ use loco_rs::{
 use migration::Migrator;
 
 #[allow(unused_imports)]
-use crate::{controllers, initializers, models::_entities::users, tasks};
+use crate::{
+    controllers, initializers,
+    models::_entities::{account_snapshots, monitored_accounts, users},
+    tasks,
+};
 
 pub struct App;
 
@@ -50,7 +54,9 @@ impl Hooks for App {
     // Además de las rutas de abajo, las de monitorización de Loco:
     // `/_ping`, `/_health` y `/_readiness` (comprueba la base; 503 si no responde).
     fn routes(_ctx: &AppContext) -> AppRoutes {
-        AppRoutes::with_default_routes().add_route(controllers::auth::routes())
+        AppRoutes::with_default_routes()
+            .add_route(controllers::auth::routes())
+            .add_route(controllers::accounts::routes())
     }
 
     async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
@@ -63,6 +69,8 @@ impl Hooks for App {
     }
 
     async fn truncate(ctx: &AppContext) -> Result<()> {
+        truncate_table(&ctx.db, account_snapshots::Entity).await?;
+        truncate_table(&ctx.db, monitored_accounts::Entity).await?;
         truncate_table(&ctx.db, users::Entity).await?;
         Ok(())
     }
