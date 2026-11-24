@@ -33,7 +33,11 @@ ENV LOCO_ENV=production \
     LOCO_CONFIG_FOLDER=/config \
     PORT=8080
 EXPOSE 8080
-# `docker run <imagen>` atiende peticiones. Una vez por release, antes de
-# desplegar: `docker run <imagen> db migrate`.
-ENTRYPOINT ["/server"]
-CMD ["start"]
+# `docker run <imagen>` aplica las migraciones pendientes y atiende peticiones
+# (DB_AUTO_MIGRATE, ver config/production.yaml). Con varias réplicas se migra
+# aparte, una vez por release (en Railway, el pre-deploy command):
+# `docker run <imagen> /server db migrate`.
+# Sin ENTRYPOINT a propósito: así un comando de la plataforma
+# (`/server db migrate`) funciona igual la sustituya o no; y en forma exec,
+# porque la imagen no tiene shell.
+CMD ["/server", "start"]

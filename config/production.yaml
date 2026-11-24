@@ -54,10 +54,13 @@ database:
   idle_timeout: <%= get_env(name="DB_IDLE_TIMEOUT", default="500") %>
   min_connections: <%= get_env(name="DB_MIN_CONNECTIONS", default="1") %>
   max_connections: <%= get_env(name="DB_MAX_CONNECTIONS", default="10") %>
-  # Las migraciones son un paso aparte, una vez por release
-  # (`/server db migrate`), no en cada arranque: con varias réplicas,
-  # cada una intentaría migrar la misma base a la vez.
-  auto_migrate: false
+  # Por defecto, `/server start` aplica las migraciones pendientes antes de
+  # atender peticiones: sin ellas no existe la tabla users y todo /auth
+  # responde 500. Es idempotente y basta con una réplica (Railway por defecto).
+  # Con varias réplicas cada una intentaría migrar a la vez: entonces
+  # DB_AUTO_MIGRATE=false y `/server db migrate` como pre-deploy command
+  # (12-factor XII, una vez por release).
+  auto_migrate: <%= get_env(name="DB_AUTO_MIGRATE", default="true") %>
   dangerously_truncate: false
   dangerously_recreate: false
 
