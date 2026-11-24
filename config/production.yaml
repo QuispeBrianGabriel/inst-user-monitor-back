@@ -6,7 +6,7 @@
 # base o con un secreto equivocados.
 #
 # Variables obligatorias: DATABASE_URL y JWT_SECRET.
-# Opcionales: PORT, LOG_LEVEL, JWT_TTL_MINUTES, CORS_ORIGIN, CLIENT_IP_SOURCE,
+# Opcionales: PORT, LOG_LEVEL, LOG_FORMAT, JWT_TTL_MINUTES, CORS_ORIGIN, CLIENT_IP_SOURCE,
 # DB_*.
 
 logger:
@@ -14,8 +14,11 @@ logger:
   # Desactivado: cuesta rendimiento y mete rutas del código fuente en los logs.
   pretty_backtrace: false
   level: <%= get_env(name="LOG_LEVEL", default="info") %>
-  # Legible por máquinas, para el agregador de logs.
-  format: json
+  # Texto plano por defecto: Railway muestra el `message` de primer nivel de
+  # las líneas JSON y el de Loco va anidado en `fields`, así que en su panel
+  # cada línea JSON salía vacía. LOG_FORMAT=json para un agregador que lo lea.
+  # compact, pretty o json.
+  format: <%= get_env(name="LOG_FORMAT", default="compact") %>
 
 server:
   port: <%= get_env(name="PORT", default="8080") %>
