@@ -197,3 +197,46 @@ async fn register_and_login_are_rate_limited_per_ip() {
     })
     .await;
 }
+
+/// Detrás de un proxy todas las conexiones llegan desde su IP: el límite va
+/// por la IP del cliente que indica el proxy (X-Real-IP en config/test.yaml).
+#[tokio::test]
+#[serial]
+async fn rate_limit_uses_the_client_ip_set_by_the_proxy() {
+    request::<App, _, _>(|request, _ctx| async move {
+        let body = json!({ "email": "nope", "password": "whatever" });
+        let from = |ip: &'static str| {
+            (
+                header::HeaderName::from_static("x-real-ip"),
+                HeaderValue::from_static(ip),
+            )
+        };
+
+        for _ in 0..5 {
+            let (name, value) = from("203.0.113.1");
+            let response = request
+                .post("/auth/login")
+                .add_header(name, value)
+                .json(&body)
+                .await;
+            response.assert_status(StatusCode::UNAUTHORIZED);
+        }
+        let (name, value) = from("203.0.113.1");
+        let response = request
+            .post("/auth/login")
+            .add_header(name, value)
+            .json(&body)
+            .await;
+        response.assert_status(StatusCode::TOO_MANY_REQUESTS);
+
+        // Otro cliente, misma conexión (la del proxy): tiene su propio límite.
+        let (name, value) = from("203.0.113.2");
+        let response = request
+            .post("/auth/login")
+            .add_header(name, value)
+            .json(&body)
+            .await;
+        response.assert_status(StatusCode::UNAUTHORIZED);
+    })
+    .await;
+}

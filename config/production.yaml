@@ -6,7 +6,8 @@
 # base o con un secreto equivocados.
 #
 # Variables obligatorias: DATABASE_URL y JWT_SECRET.
-# Opcionales: PORT, LOG_LEVEL, JWT_TTL_MINUTES, CORS_ORIGIN, DB_*.
+# Opcionales: PORT, LOG_LEVEL, JWT_TTL_MINUTES, CORS_ORIGIN, CLIENT_IP_SOURCE,
+# DB_*.
 
 logger:
   enable: true
@@ -33,6 +34,15 @@ server:
       allow_headers: ["content-type", "authorization"]
     etag:
       enable: false
+    # De dónde sale la IP del cliente (la usa el rate limit de /auth). Por
+    # defecto, la de la conexión. Detrás de un proxy (Railway, Heroku...) esa
+    # es la del proxy y todos los usuarios compartirían límite: hay que
+    # elegir la cabecera que pone el proxy, p. ej. XRealIp en Railway.
+    # Solo una cabecera que el proxy sobrescribe siempre: si no, se falsifica.
+    # Valores: ConnectInfo, XRealIp, RightmostXForwardedFor, CfConnectingIp...
+    remote_ip:
+      enable: true
+      source: <%= get_env(name="CLIENT_IP_SOURCE", default="ConnectInfo") %>
 
 workers:
   mode: BackgroundAsync

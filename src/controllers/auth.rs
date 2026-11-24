@@ -5,11 +5,22 @@
 //! `{"error": "<código>", "description": "<texto>"}`. El código es estable
 //! (para el frontend); el texto es legible y puede cambiar.
 
-use std::time::Duration;
+use std::{net::IpAddr, time::Duration};
 
-use axum::http::{StatusCode, header};
-use loco_rs::{controller::ErrorDetail, prelude::*};
-use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
+use axum::{
+    extract::Request,
+    http::{StatusCode, header},
+    middleware::{self, Next},
+};
+use loco_rs::{
+    controller::{ErrorDetail, middleware::remote_ip::RemoteIP},
+    prelude::*,
+};
+use tower_governor::{
+    GovernorError, GovernorLayer,
+    governor::GovernorConfigBuilder,
+    key_extractor::{KeyExtractor, PeerIpKeyExtractor},
+};
 
 use crate::{
     models::users::{self, AuthError, LoginParams, RegisterParams},
@@ -69,16 +80,40 @@ async fn me(
     format::json(UserResponse::from(&auth.user))
 }
 
-/// Rutas de `/auth`. Register y login tienen límite de peticiones por IP
-/// contra fuerza bruta (429 al superarlo), compartido entre ambas; `me` no.
-///
-/// La IP es la de la conexión: Loco sirve con `ConnectInfo<SocketAddr>`.
+/// Clave del rate limit: la IP del cliente según el middleware `remote_ip`
+/// de Loco (`server.middlewares.remote_ip` en `config/*.yaml`). Detrás de un
+/// proxy, la de la conexión es la del proxy: todos compartirían límite.
+#[derive(Clone)]
+struct ClientIp;
+
+impl KeyExtractor for ClientIp {
+    type Key = IpAddr;
+
+    fn extract<T>(&self, request: &axum::http::Request<T>) -> Result<IpAddr, GovernorError> {
+        match request.extensions().get::<RemoteIP>() {
+            Some(RemoteIP::Forwarded(ip) | RemoteIP::Socket(ip)) => Ok(*ip),
+            _ => PeerIpKeyExtractor.extract(request),
+        }
+    }
+}
+
+/// Resuelve `RemoteIP` (un extractor async) y lo deja en la petición, donde
+/// lo lee [`ClientIp`] (síncrono) antes de llegar al handler.
+async fn resolve_client_ip(remote_ip: RemoteIP, mut request: Request, next: Next) -> Response {
+    request.extensions_mut().insert(remote_ip);
+    next.run(request).await
+}
+
+/// Rutas de `/auth`. Register y login tienen límite de peticiones por IP de
+/// cliente contra fuerza bruta (429 al superarlo), compartido entre ambas;
+/// `me` no.
 ///
 /// # Panics
 ///
 /// Nunca: las constantes del rate limit son mayores que cero.
 pub fn routes() -> Routes {
     let rate_limit = GovernorConfigBuilder::default()
+        .key_extractor(ClientIp)
         .per_second(RATE_LIMIT_REFILL_SECS)
         .burst_size(RATE_LIMIT_BURST)
         .finish()
@@ -99,7 +134,9 @@ pub fn routes() -> Routes {
     let rate_limited = Routes::new()
         .add("/register", post(register))
         .add("/login", post(login))
-        .layer(GovernorLayer::new(rate_limit));
+        .layer(GovernorLayer::new(rate_limit))
+        // La última capa es la exterior: resuelve la IP antes del limitador.
+        .layer(middleware::from_fn(resolve_client_ip));
 
     Routes::new()
         .prefix("/auth")

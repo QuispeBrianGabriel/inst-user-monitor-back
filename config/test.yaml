@@ -30,6 +30,11 @@ server:
       allow_headers: ["content-type", "authorization"]
     etag:
       enable: false
+    # Como detrás del proxy de Railway: la IP del cliente sale de X-Real-IP
+    # y, si falta, de la conexión.
+    remote_ip:
+      enable: true
+      source: XRealIp
 
 workers:
   mode: ForegroundBlocking

@@ -41,6 +41,11 @@ server:
     # Las respuestas de la API no se cachean por ETag.
     etag:
       enable: false
+    # IP del cliente para el rate limit de /auth. En local no hay proxy:
+    # la de la conexión. Ver config/production.yaml.
+    remote_ip:
+      enable: true
+      source: <%= get_env(name="CLIENT_IP_SOURCE", default="ConnectInfo") %>
 
 workers:
   # La API no tiene trabajos en segundo plano: el modo en proceso basta.
