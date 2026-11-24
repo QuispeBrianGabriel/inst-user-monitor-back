@@ -28,6 +28,7 @@ FILE ?=
 V    ?=
 DB   ?=
 URL  ?= http://localhost:8080
+ORIGIN ?= http://localhost:3000
 
 # Consola SQL contra la base local, con la misma variable que usa la API
 PSQL := psql "$(DATABASE_URL)"
@@ -70,7 +71,7 @@ help:
 	@printf $(ITEM) "routes"        "🗺️  Lista las rutas registradas"
 	@printf $(ITEM) "doctor"        "🩺 Revisa config, base y JWT (cargo loco doctor)"
 	@printf $(ARGS) "health"        "💓 Consulta /_readiness" "[URL=]"
-	@printf $(ARGS) "smoke"         "🔥 Comprueba readiness, 404 y auth" "[URL=]"
+	@printf $(ARGS) "smoke"         "🔥 Comprueba readiness, auth, migraciones y CORS" "[URL= ORIGIN=]"
 
 	@printf "$(TITLE)" "🧪 Calidad"
 	@printf $(ITEM) "check"         "✅ Lo mismo que el pipeline (format, lint, test, build)"
@@ -139,7 +140,7 @@ health:
 	@$(GRACEFUL) "🛑 Consulta cancelada" curl -sS -w '\n' $(URL)/_readiness
 
 smoke:
-	@scripts/smoke.sh "$(URL)"
+	@scripts/smoke.sh "$(URL)" "$(ORIGIN)"
 
 # =============================================================================
 #  🧪 Calidad
