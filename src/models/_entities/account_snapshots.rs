@@ -9,7 +9,6 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub account_id: Uuid,
-    pub kind: String,
     pub total: i32,
     #[sea_orm(column_type = "JsonBinary")]
     pub entries: Json,

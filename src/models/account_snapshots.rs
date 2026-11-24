@@ -1,9 +1,8 @@
-//! Capturas de las listas de seguidores y seguidos de una cuenta monitoreada.
+//! Capturas de la lista de seguidores de una cuenta monitoreada.
 //!
 //! El usuario copia la lista en Instagram y la pega: el texto se lee entero
 //! (submódulo `parser`) y, si algo no encaja, no se guarda nada. Cada captura
-//! se compara con la anterior de la misma lista (submódulo `compare`) para
-//! mostrar qué cambió.
+//! se compara con la anterior (submódulo `compare`) para mostrar qué cambió.
 
 mod compare;
 mod parser;
@@ -12,46 +11,18 @@ use std::{collections::HashMap, result::Result};
 
 use loco_rs::prelude::*;
 use sea_orm::{FromQueryResult, QueryOrder, QuerySelect};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub use self::{
-    compare::{Changes, Relations, Rename},
+    compare::{Changes, Rename},
     parser::{Entry, MAX_ENTRIES, ParseError},
 };
 pub use super::_entities::account_snapshots::{self, ActiveModel, Column, Entity, Model};
 
-/// Qué lista de la cuenta se capturó.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ListKind {
-    Followers,
-    Following,
-}
-
-impl ListKind {
-    pub const ALL: [Self; 2] = [Self::Followers, Self::Following];
-
-    /// Valor de la columna `kind`.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Followers => "followers",
-            Self::Following => "following",
-        }
-    }
-
-    fn from_column(kind: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|candidate| candidate.as_str() == kind)
-    }
-}
-
-/// Cuerpo de `POST /accounts/{id}/snapshots`: la lista y el texto pegado.
+/// Cuerpo de `POST /accounts/{id}/snapshots`: el texto pegado.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SnapshotParams {
-    pub kind: ListKind,
     pub text: String,
 }
 
@@ -74,16 +45,14 @@ impl From<DbErr> for SnapshotError {
 pub struct SnapshotInfo {
     pub id: Uuid,
     pub account_id: Uuid,
-    pub kind: String,
     pub total: i32,
     pub captured_at: DateTimeWithTimeZone,
 }
 
-/// Historial de una lista de una cuenta, con las dos últimas capturas
-/// completas para compararlas.
+/// Historial de capturas de una cuenta, con las dos últimas completas para
+/// compararlas.
 #[derive(Debug, Clone)]
 pub struct Timeline {
-    pub kind: ListKind,
     /// De la más reciente a la más antigua; nunca vacío.
     pub history: Vec<SnapshotInfo>,
     /// Cuentas de la última captura.
@@ -127,7 +96,7 @@ impl ActiveModelBehavior for ActiveModel {
 }
 
 impl Model {
-    /// Lee el texto pegado y lo guarda como la última captura de la lista.
+    /// Lee el texto pegado y lo guarda como la última captura de seguidores.
     /// La cuenta tiene que ser del usuario: compruébalo antes.
     ///
     /// # Errors
@@ -144,7 +113,6 @@ impl Model {
         let entries = serde_json::to_value(entries).map_err(ModelError::wrap)?;
         Ok(account_snapshots::ActiveModel {
             account_id: ActiveValue::Set(account_id),
-            kind: ActiveValue::Set(params.kind.as_str().to_owned()),
             total: ActiveValue::Set(total),
             entries: ActiveValue::Set(entries),
             ..Default::default()
@@ -190,12 +158,11 @@ impl Model {
         Ok(())
     }
 
-    /// Historial de cada lista de las cuentas indicadas, por cuenta. Las
-    /// listas sin capturas no aparecen; las demás van en el orden de
-    /// [`ListKind::ALL`].
+    /// Historial de capturas de las cuentas indicadas, por cuenta. Las
+    /// cuentas sin capturas no aparecen.
     ///
     /// Dos consultas: el historial sin las listas (ligero) y, completas,
-    /// solo las dos últimas capturas de cada lista.
+    /// solo las dos últimas capturas de cada cuenta.
     ///
     /// # Errors
     ///
@@ -203,7 +170,7 @@ impl Model {
     pub async fn timelines(
         db: &DatabaseConnection,
         account_ids: &[Uuid],
-    ) -> ModelResult<HashMap<Uuid, Vec<Timeline>>> {
+    ) -> ModelResult<HashMap<Uuid, Timeline>> {
         if account_ids.is_empty() {
             return Ok(HashMap::new());
         }
@@ -212,7 +179,6 @@ impl Model {
             .columns([
                 Column::Id,
                 Column::AccountId,
-                Column::Kind,
                 Column::Total,
                 Column::CapturedAt,
             ])
@@ -223,14 +189,9 @@ impl Model {
             .all(db)
             .await?;
 
-        let mut histories: HashMap<(Uuid, ListKind), Vec<SnapshotInfo>> = HashMap::new();
+        let mut histories: HashMap<Uuid, Vec<SnapshotInfo>> = HashMap::new();
         for info in infos {
-            if let Some(kind) = ListKind::from_column(&info.kind) {
-                histories
-                    .entry((info.account_id, kind))
-                    .or_default()
-                    .push(info);
-            }
+            histories.entry(info.account_id).or_default().push(info);
         }
 
         let recent_ids = histories
@@ -245,22 +206,18 @@ impl Model {
             recent.insert(snapshot.id, snapshot.entries()?);
         }
 
-        let mut timelines: HashMap<Uuid, Vec<Timeline>> = HashMap::new();
-        for account_id in account_ids {
-            for kind in ListKind::ALL {
-                let Some(history) = histories.remove(&(*account_id, kind)) else {
-                    continue;
-                };
+        Ok(histories
+            .into_iter()
+            .map(|(account_id, history)| {
                 let current = recent.remove(&history[0].id).unwrap_or_default();
                 let previous = history.get(1).and_then(|info| recent.remove(&info.id));
-                timelines.entry(*account_id).or_default().push(Timeline {
-                    kind,
+                let timeline = Timeline {
                     history,
                     current,
                     previous,
-                });
-            }
-        }
-        Ok(timelines)
+                };
+                (account_id, timeline)
+            })
+            .collect())
     }
 }

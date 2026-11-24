@@ -1,5 +1,5 @@
 //! Lectura de una lista de cuentas copiada de Instagram (Ctrl+A, Ctrl+C en
-//! la lista de seguidores o de seguidos).
+//! la lista de seguidores).
 //!
 //! El texto tiene una cuenta tras otra: una línea con el usuario y, debajo,
 //! su nombre visible. El nombre puede faltar (`angelmeeza` va seguido

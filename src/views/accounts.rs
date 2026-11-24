@@ -5,7 +5,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::models::{
-    account_snapshots::{self, Changes, Entry, ListKind, Relations, SnapshotInfo, Timeline},
+    account_snapshots::{self, Changes, Entry, SnapshotInfo, Timeline},
     monitored_accounts,
 };
 
@@ -36,8 +36,6 @@ impl From<&monitored_accounts::Model> for AccountResponse {
 #[derive(Debug, Serialize)]
 pub struct SnapshotResponse {
     pub id: Uuid,
-    /// `followers` o `following`.
-    pub kind: String,
     pub total: i32,
     pub captured_at: DateTime<Utc>,
 }
@@ -46,7 +44,6 @@ impl From<&SnapshotInfo> for SnapshotResponse {
     fn from(info: &SnapshotInfo) -> Self {
         Self {
             id: info.id,
-            kind: info.kind.clone(),
             total: info.total,
             captured_at: info.captured_at.with_timezone(&Utc),
         }
@@ -57,15 +54,14 @@ impl From<&account_snapshots::Model> for SnapshotResponse {
     fn from(snapshot: &account_snapshots::Model) -> Self {
         Self {
             id: snapshot.id,
-            kind: snapshot.kind.clone(),
             total: snapshot.total,
             captured_at: snapshot.captured_at.with_timezone(&Utc),
         }
     }
 }
 
-/// Estado de una lista en el listado de cuentas: la última captura y cuánto
-/// cambió respecto de la anterior (`None` si es la primera).
+/// Seguidores en el listado de cuentas: la última captura y cuánto cambió
+/// respecto de la anterior (`None` si es la primera).
 #[derive(Debug, Serialize)]
 pub struct ListSummary {
     pub latest: SnapshotResponse,
@@ -90,23 +86,21 @@ impl From<&Timeline> for ListSummary {
 #[derive(Debug, Serialize)]
 pub struct AccountSummary {
     pub account: AccountResponse,
+    /// `None` si aún no hay capturas.
     pub followers: Option<ListSummary>,
-    pub following: Option<ListSummary>,
 }
 
 impl AccountSummary {
     #[must_use]
-    pub fn new(account: &monitored_accounts::Model, timelines: &[Timeline]) -> Self {
-        let summary = |kind| find(timelines, kind).map(ListSummary::from);
+    pub fn new(account: &monitored_accounts::Model, timeline: Option<&Timeline>) -> Self {
         Self {
             account: account.into(),
-            followers: summary(ListKind::Followers),
-            following: summary(ListKind::Following),
+            followers: timeline.map(ListSummary::from),
         }
     }
 }
 
-/// Una lista en el detalle de la cuenta: la última captura completa, sus
+/// Seguidores en el detalle de la cuenta: la última captura completa, sus
 /// cambios respecto de la anterior y el historial de capturas.
 #[derive(Debug, Serialize)]
 pub struct ListReport {
@@ -138,28 +132,16 @@ impl From<&Timeline> for ListReport {
 #[derive(Debug, Serialize)]
 pub struct AccountDetail {
     pub account: AccountResponse,
+    /// `None` si aún no hay capturas.
     pub followers: Option<ListReport>,
-    pub following: Option<ListReport>,
-    /// Solo cuando hay capturas de las dos listas.
-    pub relations: Option<Relations>,
 }
 
 impl AccountDetail {
     #[must_use]
-    pub fn new(account: &monitored_accounts::Model, timelines: &[Timeline]) -> Self {
-        let followers = find(timelines, ListKind::Followers);
-        let following = find(timelines, ListKind::Following);
+    pub fn new(account: &monitored_accounts::Model, timeline: Option<&Timeline>) -> Self {
         Self {
             account: account.into(),
-            followers: followers.map(ListReport::from),
-            following: following.map(ListReport::from),
-            relations: followers.zip(following).map(|(followers, following)| {
-                Relations::between(&followers.current, &following.current)
-            }),
+            followers: timeline.map(ListReport::from),
         }
     }
-}
-
-fn find(timelines: &[Timeline], kind: ListKind) -> Option<&Timeline> {
-    timelines.iter().find(|timeline| timeline.kind == kind)
 }

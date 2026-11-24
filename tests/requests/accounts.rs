@@ -31,13 +31,12 @@ async fn paste(
     request: &TestServer,
     auth: &(HeaderName, HeaderValue),
     account_id: &str,
-    kind: &str,
     text: &str,
 ) -> TestResponse {
     request
         .post(&format!("/accounts/{account_id}/snapshots"))
         .add_header(auth.0.clone(), auth.1.clone())
-        .json(&json!({ "kind": kind, "text": text }))
+        .json(&json!({ "text": text }))
         .await
 }
 
@@ -105,7 +104,6 @@ async fn create_and_list_accounts() {
             .collect();
         assert_eq!(usernames, ["angelmeeza", "duki"]);
         assert_eq!(list[0]["followers"], Value::Null);
-        assert_eq!(list[0]["following"], Value::Null);
     })
     .await;
 }
@@ -171,7 +169,7 @@ async fn accounts_of_other_users_do_not_exist() {
             .add_header(other.0.clone(), other.1.clone())
             .await
             .assert_status(StatusCode::NOT_FOUND);
-        paste(&request, &other, id, "followers", "duki\n5202")
+        paste(&request, &other, id, "duki\n5202")
             .await
             .assert_status(StatusCode::NOT_FOUND);
 
@@ -222,25 +220,22 @@ async fn pasting_lists_tracks_changes() {
         let id = account["id"].as_str().unwrap();
         let path = format!("/accounts/{id}");
 
-        let response = paste(&request, &auth, id, "followers", FOLLOWERS).await;
+        let response = paste(&request, &auth, id, FOLLOWERS).await;
         response.assert_status(StatusCode::CREATED);
         let snapshot: Value = response.json();
-        assert_eq!(snapshot["kind"], "followers");
         assert_eq!(snapshot["total"], 222);
 
         let detail = get_json(&request, &auth, &path).await;
         assert_eq!(detail["followers"]["latest"]["total"], 222);
         assert_eq!(detail["followers"]["entries"][0]["username"], "izqmatty");
         assert_eq!(detail["followers"]["changes"], Value::Null);
-        assert_eq!(detail["following"], Value::Null);
-        assert_eq!(detail["relations"], Value::Null);
 
         // Segunda captura: se va `izqmatty`, llega `nuevo.seguidor` y
         // `duki` cambia de nombre.
         let second = FOLLOWERS
             .replacen("izqmatty\nizqmatty\n", "nuevo.seguidor\nNuevo\n", 1)
             .replacen("duki\n5202\n", "duki\nDuki\n", 1);
-        paste(&request, &auth, id, "followers", &second)
+        paste(&request, &auth, id, &second)
             .await
             .assert_status(StatusCode::CREATED);
 
@@ -269,29 +264,6 @@ async fn pasting_lists_tracks_changes() {
         assert_eq!(summary["total_delta"], 0);
         assert_eq!(summary["added"], 1);
         assert_eq!(summary["removed"], 1);
-
-        // Seguidos: aparece el cruce con los seguidores.
-        paste(
-            &request,
-            &auth,
-            id,
-            "following",
-            "duki\nDuki\nelrubiuswtf\nel rubius WTF\nalguien.mas",
-        )
-        .await
-        .assert_status(StatusCode::CREATED);
-        let detail = get_json(&request, &auth, &path).await;
-        assert_eq!(detail["following"]["latest"]["total"], 3);
-        let relations = &detail["relations"];
-        assert_eq!(relations["mutual"], 2);
-        assert_eq!(
-            relations["not_following_back"],
-            json!([{ "username": "alguien.mas", "full_name": null }])
-        );
-        assert_eq!(
-            relations["not_followed_back"].as_array().unwrap().len(),
-            220
-        );
     })
     .await;
 }
@@ -306,7 +278,7 @@ async fn invalid_pastes_are_rejected_and_not_saved() {
             .json();
         let id = account["id"].as_str().unwrap();
 
-        let response = paste(&request, &auth, id, "followers", "Seguidores\nduki\n5202").await;
+        let response = paste(&request, &auth, id, "Seguidores\nduki\n5202").await;
         assert_error(
             &response,
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -319,11 +291,15 @@ async fn invalid_pastes_are_rejected_and_not_saved() {
         assert!(description.contains("línea 1"), "{description}");
 
         assert_error(
-            &paste(&request, &auth, id, "followers", "  \n").await,
+            &paste(&request, &auth, id, "  \n").await,
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_format",
         );
-        paste(&request, &auth, id, "otra", "duki\n5202")
+        // Ya no hay listas distintas: un `kind` es un campo desconocido.
+        request
+            .post(&format!("/accounts/{id}/snapshots"))
+            .add_header(auth.0.clone(), auth.1.clone())
+            .json(&json!({ "kind": "following", "text": "duki\n5202" }))
             .await
             .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
 
@@ -347,7 +323,7 @@ async fn pasted_lists_may_exceed_the_general_body_limit() {
         let text: String = (0..10_000)
             .map(|i| format!("cuenta.{i}\nCuenta número {i}\n"))
             .collect();
-        let response = paste(&request, &auth, id, "followers", &text).await;
+        let response = paste(&request, &auth, id, &text).await;
         response.assert_status(StatusCode::CREATED);
         assert_eq!(response.json::<Value>()["total"], 10_000);
 
@@ -372,10 +348,10 @@ async fn delete_a_snapshot() {
             .await
             .json();
         let id = account["id"].as_str().unwrap();
-        paste(&request, &auth, id, "followers", "duki\n5202")
+        paste(&request, &auth, id, "duki\n5202")
             .await
             .assert_status(StatusCode::CREATED);
-        let snapshot: Value = paste(&request, &auth, id, "followers", "duki\n5202\nangelmeeza")
+        let snapshot: Value = paste(&request, &auth, id, "duki\n5202\nangelmeeza")
             .await
             .json();
 

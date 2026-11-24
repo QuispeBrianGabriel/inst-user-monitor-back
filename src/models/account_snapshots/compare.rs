@@ -1,5 +1,4 @@
-//! Comparaciones entre listas de cuentas: qué cambió desde la captura
-//! anterior y cómo se cruzan seguidores y seguidos.
+//! Comparación entre capturas: qué cambió desde la anterior.
 
 use std::collections::{HashMap, HashSet};
 
@@ -67,45 +66,6 @@ impl Changes {
     }
 }
 
-/// Cruce de las últimas listas de seguidores y seguidos de una cuenta.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Relations {
-    /// Cuentas que la siguen y a las que sigue.
-    pub mutual: usize,
-    /// Cuentas que sigue y que no la siguen.
-    pub not_following_back: Vec<Entry>,
-    /// Cuentas que la siguen y a las que no sigue.
-    pub not_followed_back: Vec<Entry>,
-}
-
-impl Relations {
-    #[must_use]
-    pub fn between(followers: &[Entry], following: &[Entry]) -> Self {
-        let follower_names: HashSet<&str> = followers
-            .iter()
-            .map(|entry| entry.username.as_str())
-            .collect();
-        let following_names: HashSet<&str> = following
-            .iter()
-            .map(|entry| entry.username.as_str())
-            .collect();
-
-        Self {
-            mutual: follower_names.intersection(&following_names).count(),
-            not_following_back: following
-                .iter()
-                .filter(|entry| !follower_names.contains(entry.username.as_str()))
-                .cloned()
-                .collect(),
-            not_followed_back: followers
-                .iter()
-                .filter(|entry| !following_names.contains(entry.username.as_str()))
-                .cloned()
-                .collect(),
-        }
-    }
-}
-
 fn len_i64(entries: &[Entry]) -> i64 {
     i64::try_from(entries.len()).unwrap_or(i64::MAX)
 }
@@ -160,20 +120,5 @@ mod tests {
         assert_eq!(changes.total_delta, 0);
         assert!(changes.added.is_empty() && changes.removed.is_empty());
         assert!(changes.renamed.is_empty());
-    }
-
-    #[test]
-    fn relations_between_followers_and_following() {
-        let followers = [entry("a", None), entry("b", None), entry("c", None)];
-        let following = [entry("b", None), entry("d", None)];
-
-        let relations = Relations::between(&followers, &following);
-
-        assert_eq!(relations.mutual, 1);
-        assert_eq!(relations.not_following_back, [entry("d", None)]);
-        assert_eq!(
-            relations.not_followed_back,
-            [entry("a", None), entry("c", None)]
-        );
     }
 }

@@ -52,7 +52,7 @@ impl From<SnapshotError> for Error {
 
 type Auth = auth::JWTWithUser<users::Model>;
 
-/// `GET /accounts` → 200 con las cuentas y el estado de sus listas.
+/// `GET /accounts` → 200 con las cuentas y el estado de sus seguidores.
 #[debug_handler]
 async fn list(auth: Auth, State(ctx): State<AppContext>) -> Result<Response> {
     let accounts = monitored_accounts::Model::list_for_user(&ctx.db, auth.user.id).await?;
@@ -61,12 +61,7 @@ async fn list(auth: Auth, State(ctx): State<AppContext>) -> Result<Response> {
     format::json(
         accounts
             .iter()
-            .map(|account| {
-                AccountSummary::new(
-                    account,
-                    timelines.get(&account.id).map_or(&[], Vec::as_slice),
-                )
-            })
+            .map(|account| AccountSummary::new(account, timelines.get(&account.id)))
             .collect::<Vec<_>>(),
     )
 }
@@ -84,13 +79,12 @@ async fn create(
         .json(AccountResponse::from(&account))
 }
 
-/// `GET /accounts/{id}` → 200 con la cuenta, sus listas y sus cambios.
+/// `GET /accounts/{id}` → 200 con la cuenta, sus seguidores y sus cambios.
 #[debug_handler]
 async fn show(auth: Auth, Path(id): Path<Uuid>, State(ctx): State<AppContext>) -> Result<Response> {
     let account = monitored_accounts::Model::find_for_user(&ctx.db, auth.user.id, id).await?;
-    let mut timelines = account_snapshots::Model::timelines(&ctx.db, &[account.id]).await?;
-    let timelines = timelines.remove(&account.id).unwrap_or_default();
-    format::json(AccountDetail::new(&account, &timelines))
+    let timelines = account_snapshots::Model::timelines(&ctx.db, &[account.id]).await?;
+    format::json(AccountDetail::new(&account, timelines.get(&account.id)))
 }
 
 /// `PUT /accounts/{id}` → 200 con la cuenta actualizada.
@@ -118,7 +112,7 @@ async fn remove(
     format::render().status(StatusCode::NO_CONTENT).empty()
 }
 
-/// `POST /accounts/{id}/snapshots` → 201 con la captura guardada, o 422
+/// `POST /accounts/{id}/snapshots` → 201 con la captura de seguidores guardada, o 422
 /// `invalid_format` (y nada guardado) si el texto no es una lista válida.
 #[debug_handler]
 async fn create_snapshot(
