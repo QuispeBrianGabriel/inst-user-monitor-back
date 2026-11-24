@@ -36,7 +36,7 @@ server:
     cors:
       enable: true
       allow_origins: [<% for origin in get_env(name="CORS_ORIGIN", default="http://localhost:3000") | split(pat=",") %>"<%= origin | trim %>"<% if not loop.last %>, <% endif %><% endfor %>]
-      allow_methods: ["GET", "POST"]
+      allow_methods: ["GET", "POST", "PUT", "DELETE"]
       allow_headers: ["content-type", "authorization"]
     # Las respuestas de la API no se cachean por ETag.
     etag:
